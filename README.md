@@ -1,4 +1,4 @@
-# hx711-multi
+# hx711-multi (PiGPIO Version)
 
 [![Publish to PyPI](https://github.com/morrious/hx711-multi/actions/workflows/python-publish.yml/badge.svg)](https://pypi.org/project/hx711-multi/) [![Downloads](https://pepy.tech/badge/hx711-multi)](https://pepy.tech/project/hx711-multi)
 
@@ -21,7 +21,7 @@ Capabilities:
 - Read raw measurements from ADCs
 - Read weight measurements from ADCs
 
-**This package requires RPi.GPIO to be installed in Python 3.**
+**This package requires PiGPIO to be installed in Python 3.**
 
 ## Hardware
 
@@ -46,10 +46,10 @@ _(also found at /tests/simple_read_test.py)_
 
 from hx711_multi import HX711
 from time import perf_counter
-import RPi.GPIO as GPIO  # import GPIO
+import pigpio
 
 # init GPIO (should be done outside HX711 module in case you are using other GPIO functionality)
-GPIO.setmode(GPIO.BCM)  # set GPIO pin mode to BCM numbering
+pi = pigpio.pi()
 
 readings_to_average = 10
 sck_pin = 1
@@ -57,7 +57,8 @@ dout_pins = [2, 3, 4, 14, 15]
 weight_multiples = [-5176, -5500, -5690, -5484, -5455]
 
 # create hx711 instance
-hx711 = HX711(dout_pins=dout_pins,
+hx711 = HX711(pi=pi,
+              dout_pins=dout_pins,
               sck_pin=sck_pin,
               channel_A_gain=128,
               channel_select='A',
@@ -105,8 +106,8 @@ except KeyboardInterrupt:
 except Exception as e:
     print(e)
 
-# cleanup GPIO
-GPIO.cleanup()
+# Disconnect
+pi.stop()
 ```
 
 **Calibration sequence**
@@ -125,6 +126,7 @@ print(f'Weight multiple = {weight_multiple}')
 ## Author
 
 - James Morris (https://james.pizza)
+- Bruno Tuma (https://brunotuma.com)
 
 ## License
 
@@ -133,3 +135,4 @@ print(f'Weight multiple = {weight_multiple}')
 ## Credits
 
 - Starting point: https://github.com/gandalf15/HX711/
+- Original RPi.GPIO version: https://github.com/Morrious/hx711-multi
