@@ -15,10 +15,10 @@ except:
         from hx711_multi import HX711
 
 from time import perf_counter
-import RPi.GPIO as GPIO  # import GPIO
+import pigpio
 
 # init GPIO (should be done outside HX711 module in case you are using other GPIO functionality)
-GPIO.setmode(GPIO.BCM)  # set GPIO pin mode to BCM numbering
+pi = pigpio.pi()
 
 readings_to_average = 10
 sck_pin = 1
@@ -26,7 +26,8 @@ dout_pins = [2, 3, 4, 14, 15]
 weight_multiples = [-5176, -5500, -5690, -5484, -5455]
 
 # create hx711 instance
-hx711 = HX711(dout_pins=dout_pins,
+hx711 = HX711(pi=pi,
+              dout_pins=dout_pins,
               sck_pin=sck_pin,
               channel_A_gain=128,
               channel_select='A',
@@ -74,5 +75,5 @@ except KeyboardInterrupt:
 except Exception as e:
     print(e)
 
-# cleanup GPIO
-GPIO.cleanup()
+# Close PiGPIO connection
+pi.stop()

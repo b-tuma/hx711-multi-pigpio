@@ -3,7 +3,7 @@
 This file holds HX711 class and ADC class which is used within HX711 in order to track multiple ADCs
 """
 
-import RPi.GPIO as GPIO
+import pigpio
 from time import sleep, perf_counter
 from statistics import mean, median, stdev
 from .utils import convert_to_list
@@ -37,6 +37,7 @@ class HX711:
 
     def __init__(
         self,
+        pi: pigpio.pi,
         dout_pins,
         sck_pin: int,
         channel_A_gain: int = 128,
@@ -53,6 +54,7 @@ class HX711:
         self._all_or_nothing = all_or_nothing
         self._dout_pins = dout_pins
         self._sck_pin = sck_pin
+        self._pi = pi
         # init GPIO before channel because a read operation is required for channel initialization
         self._init_gpio()
         self._channel_A_gain = channel_A_gain
@@ -121,15 +123,15 @@ class HX711:
 
     def _init_gpio(self):
         # init GPIO
-        GPIO.setup(self._sck_pin, GPIO.OUT)  # sck_pin is output only
+        self._pi.set_mode(self._sck_pin, pigpio.OUTPUT)  # sck_pin is output only
         for dout in self._dout_pins:
-            GPIO.setup(dout, GPIO.IN)  # dout_pin is input only
+            self._pi.set_mode(dout, pigpio.INPUT)  # dout_pin is input only
 
     def _init_adcs(self):
         # initialize ADC instances
         self._adcs = []
         for dout_pin in self._dout_pins:
-            self._adcs.append(ADC(dout_pin=dout_pin, logger=self._logger))
+            self._adcs.append(ADC(pi=self._pi, dout_pin=dout_pin, logger=self._logger))
 
     def _prepare_to_read(self):
         """
@@ -139,8 +141,7 @@ class HX711:
             bool : True if ready to read else False 
         """
 
-        GPIO.output(self._sck_pin, False)  # start by setting the pd_sck to 0
-
+        self._pi.write(self._sck_pin, 0)  # start by setting the pd_sck to 0
         # check if ready a maximum of 20 times (~200ms)
         # should usually be about 10 iterations with 10Hz sampling
         for i in range(20):
@@ -162,24 +163,8 @@ class HX711:
     def _pulse_sck_high(self):
         """
         Pulse SCK pin high shortly
-
-        Returns:
-            bool: True if pulse was shorter than 60 ms
         """
-
-        pulse_start = perf_counter()
-        GPIO.output(self._sck_pin, True)
-        GPIO.output(self._sck_pin, False)
-        pulse_end = perf_counter()
-        # check if pulse lasted 60ms or longer. If so, HX711 enters power down mode
-        # check if the hx 711 did not turn off...
-        if pulse_end - pulse_start >= 0.00006:
-            # if pd_sck pin is HIGH for 60 us and more than the HX 711 enters power down mode.
-            self._logger.warn(
-                f'sck pulse lasted for longer than 60us\nTime elapsed: {pulse_end - pulse_start}'
-            )
-            return False
-        return True
+        self._pi.gpio_trigger(self._sck_pin,1,1)
 
     def _write_channel_gain(self):
         """
@@ -203,8 +188,7 @@ class HX711:
 
         # pulse num_pulses
         for _ in range(num_pulses):
-            if not self._pulse_sck_high():
-                return False
+            self._pulse_sck_high()
         return True
 
     def _read(self):
@@ -233,8 +217,7 @@ class HX711:
         # for each bit in 24 bits, perform ADC read
         for _ in range(24):
             # pulse sck high to request each bit
-            if not self._pulse_sck_high():
-                return False
+            self._pulse_sck_high()
             for adc in self._adcs:
                 if adc._ready:
                     adc._shift_and_read()
@@ -350,29 +333,14 @@ class HX711:
         """ simply returns the most recent calibrated weight value(s) without performing any new measurements IF FRESH else None"""
         return self.read_weight(use_prev_read=True, fresh_only=True)
 
-    def power_down(self):
-        """ turn off all hx711 by setting SCK pin LOW then HIGH """
-        GPIO.output(self._sck_pin, False)
-        GPIO.output(self._sck_pin, True)
-        sleep(0.01)
-
-    def power_up(self):
-        """ turn on all hx711 by setting SCK pin LOW """
-        GPIO.output(self._sck_pin, False)
-        result = self._read()
-        sleep(0.4)  # 400ms settling time according to documentation
-        if result:
-            return True
-        else:
-            return False
-
     def reset(self):
         """ resets the hx711 and prepare it for the next reading.
 
         Returns: True if pass, False if readings do not come back
         """
-        self.power_down()
-        result = self.power_up()
+        self._pi.gpio_trigger(self._sck_pin,70,1)
+        result = self._read()
+        sleep(0.4)  # 400ms settling time according to documentation
         if result:
             return True
         else:
@@ -571,9 +539,11 @@ class ADC:
 
     def __init__(
         self,
+        pi: pigpio.pi,
         dout_pin: int,
         logger: Logger,
     ):
+        self._pi = pi
         self._dout_pin = dout_pin
         self._logger = logger
         self._zero_offset = 0.
@@ -639,13 +609,12 @@ class ADC:
         if self._ready:
             return True
         else:
-            self._ready = (GPIO.input(self._dout_pin) == 0)
+            self._ready = (self._pi.read(self._dout_pin) == 0)
             return self._ready
 
     def _shift_and_read(self):
         """ left shift by one bit then bitwise OR with the new bit """
-        self._current_raw_read = (self._current_raw_read << 1) | GPIO.input(
-            self._dout_pin)
+        self._current_raw_read = (self._current_raw_read << 1) | self._pi.read(self._dout_pin)
 
     def _finish_raw_read(self):
         """ append current raw read value and signed value to raw_reads list and reads list """

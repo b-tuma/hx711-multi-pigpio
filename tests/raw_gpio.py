@@ -1,21 +1,21 @@
-import RPi.GPIO as GPIO
-
-GPIO.setmode(GPIO.BCM)  # set GPIO pin mode to BCM numbering
+import pigpio
 
 sck_pin = 1
 dout_pin = 2
 channel_select = 'A'
 channel_A_gain = 128
 
+pi = pigpio.pi()
+
 # init GPIO
-GPIO.setup(sck_pin, GPIO.OUT)  # sck_pin is output only
-GPIO.setup(dout_pin, GPIO.IN)  # dout_pin is input only
+pi.set_mode(sck_pin, pigpio.OUTPUT)  # sck_pin is output only
+pi.set_mode(dout_pin, pigpio.INPUT)  # dout_pin is input only
 
 # prepare for read
-GPIO.output(sck_pin, False)  # start by setting the pd_sck to 0
+pi.write(sck_pin, 0)  # start by setting the pd_sck to 0
 # check if dout pin is ready by confirming zero
 for _ in range(20):
-    ready = (GPIO.input(dout_pin) == 0)
+    ready = (pi.read(dout_pin) == 0)
     if ready:
         break
 
@@ -27,10 +27,9 @@ if not ready:
 raw_read = 0
 for _ in range(24):
     # pulse sck high to request each bit
-    GPIO.output(sck_pin, True)
-    GPIO.output(sck_pin, False)
+    pi.gpio_trigger(sck_pin,1,1)
     # left shift by one bit then bitwise OR with the new bit
-    raw_read = (raw_read << 1) | GPIO.input(dout_pin)
+    raw_read = (raw_read << 1) | pi.read(dout_pin)
 
 # set channel after read
 # get number of pulses based on channel configuration
@@ -41,8 +40,7 @@ elif channel_select == 'A' and channel_A_gain == 64:
     num_pulses = 3
 # pulse num_pulses
 for _ in range(num_pulses):
-    GPIO.output(sck_pin, True)
-    GPIO.output(sck_pin, False)
+    pi.gpio_trigger(sck_pin,1,1)
 
 print(f'Raw read (2s complement): {raw_read}')
 if raw_read in [0x800000, 0x7FFFFF, 0xFFFFFF]:
@@ -56,4 +54,4 @@ else:  # else do not do anything the value is positive number
     signed_value = raw_read
 print(f'Raw read (signed integer): {signed_value}')
 
-GPIO.cleanup()
+pi.stop()

@@ -18,10 +18,10 @@ except:
         from hx711_multi import HX711
 
 from statistics import mean, stdev
-import RPi.GPIO as GPIO  # import GPIO
+import pigpio
 
 # init GPIO (should be done outside HX711 module in case you are using other GPIO functionality)
-GPIO.setmode(GPIO.BCM)  # set GPIO pin mode to BCM numbering
+pi = pigpio.pi()
 
 readings_to_average = 10  # datapoints to read per measurement
 
@@ -57,7 +57,8 @@ if dout_pin is None:
 
 try:
     # create hx711 instance
-    hx711 = HX711(dout_pins=dout_pin,
+    hx711 = HX711(pi=pi,
+                  dout_pins=dout_pin,
                   sck_pin=sck_pin,
                   channel_A_gain=128,
                   channel_select='A',
@@ -72,5 +73,5 @@ except KeyboardInterrupt:
 except Exception as e:
     print(e)
 
-# cleanup GPIO
-GPIO.cleanup()
+# Disconnect
+pi.stop()
